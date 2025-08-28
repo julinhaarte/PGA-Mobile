@@ -1,0 +1,23 @@
+{
+  "expo": {
+    "name": "PGA 2025 - Fatec Votorantim",
+    "slug": "pga-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    
+    "userInterfaceStyle": "light",
+    
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.fatec.pgamobile"
+    },
+    "android": {
+      "package": "com.fatec.pgamobile"
+    },
+    
+    "plugins": []
+  }
+}
