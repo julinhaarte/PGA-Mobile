@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import '../../theme/app_theme.dart';
+import '../theme/app_theme.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -68,9 +68,9 @@ class _LoginScreenState extends State<LoginScreen> {
                     Column(
                       children: [
                         Image.asset(
-                          'assets/images/fatec-votorantim 1.png',
+                          'assets/images/fatec-votorantim1.png',
                           width: 200,
-                          height: 200,
+                          height: 70,
                         ),
                         const SizedBox(height: 20),
                         const Text(
@@ -193,7 +193,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
 
-                    const SizedBox(height: 40),
+                    const SizedBox(height: 90),
 
                     // Footer
                     const Column(

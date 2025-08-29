@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../theme/app_theme.dart';
+import '../theme/app_theme.dart';
 
 class BottomNavigation extends StatelessWidget {
   final String currentRoute;
@@ -41,19 +41,19 @@ class BottomNavigation extends StatelessWidget {
     ];
 
     return Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: Colors.white,
-        border: Border(
+        border: const Border(
           top: BorderSide(
-            color: Color(0xFFE0E0E0),
+            color: Colors.white,
             width: 1,
           ),
         ),
-        boxShadow: [
+        boxShadow: const [
           BoxShadow(
             color: Colors.black12,
             blurRadius: 4,
-            offset: const Offset(0, -2),
+            offset: Offset(0, -2),
           ),
         ],
       ),
@@ -65,24 +65,26 @@ class BottomNavigation extends StatelessWidget {
               final isActive = route['key'] == currentRoute;
               return Expanded(
                 child: InkWell(
-                  onTap: () => onNavigate(route['key']),
+                  onTap: () => onNavigate(route['key'] as String),
                   child: Container(
                     padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Icon(
-                          isActive ? route['activeIcon'] : route['icon'],
+                          isActive
+                              ? route['activeIcon'] as IconData
+                              : route['icon'] as IconData,
                           size: 24,
-                          color: isActive ? AppTheme.primaryColor : const Color(0xFF666666),
+                          color: isActive ? AppTheme.primaryColor : const Color.fromARGB(255, 102, 102, 102),
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          route['title'],
+                          route['title'] as String,
                           style: TextStyle(
                             fontSize: 11,
                             fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
-                            color: isActive ? AppTheme.primaryColor : const Color(0xFF666666),
+                            color: isActive ? AppTheme.primaryColor : const Color.fromARGB(255, 104, 104, 104),
                           ),
                           textAlign: TextAlign.center,
                         ),

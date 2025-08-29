@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../theme/app_theme.dart';
+import '../theme/app_theme.dart';
 import '../widgets/project_card.dart';
 import '../widgets/bottom_navigation.dart';
 
