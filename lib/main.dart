@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-// ignore: unused_import
-import 'package:provider/provider.dart';
 import 'src/theme/app_theme.dart';
 import 'src/screens/login_screen.dart';
 import 'src/screens/dashboard_screen.dart';

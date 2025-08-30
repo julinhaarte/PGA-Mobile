@@ -15,25 +15,25 @@ class BottomNavigation extends StatelessWidget {
   Widget build(BuildContext context) {
     final routes = [
       {
-        'key': 'Dashboard',
+        'key': '/dashboard',
         'title': 'Dashboard',
         'icon': Icons.dashboard,
         'activeIcon': Icons.dashboard,
       },
       {
-        'key': 'Projects',
+        'key': '/projects',
         'title': 'Projetos',
         'icon': Icons.folder,
         'activeIcon': Icons.folder,
       },
       {
-        'key': 'CreateProject',
+        'key': '/create-project',
         'title': 'Criar',
         'icon': Icons.add_circle,
         'activeIcon': Icons.add_circle,
       },
       {
-        'key': 'Settings',
+        'key': '/settings',
         'title': 'Config',
         'icon': Icons.settings,
         'activeIcon': Icons.settings,

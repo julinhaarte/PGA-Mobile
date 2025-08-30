@@ -14,50 +14,50 @@ class ProjectCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      project['name'],
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: AppTheme.textPrimaryColor,
+      child: Container(
+        color: Color(0xFFFFFFFF),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        project['name'],
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.textPrimaryColor,
+                        ),
                       ),
                     ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: _getStatusColor(project['status']),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      project['status'],
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Colors.white,
-                        fontWeight: FontWeight.w500,
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: _getStatusColor(project['status']),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        project['status'],
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.white,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
                     ),
-                  ),
-                ],
-              ),
-              
-              const SizedBox(height: 12),
-              
-              // Barra de Progresso
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
+                  ],
+                ),
+                const SizedBox(height: 12),
+                // Barra de Progresso
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -142,8 +142,10 @@ class ProjectCard extends StatelessWidget {
           ),
         ),
       ),
+    ),
     );
   }
+
 
   Color _getStatusColor(String status) {
     switch (status.toLowerCase()) {

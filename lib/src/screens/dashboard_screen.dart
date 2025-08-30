@@ -210,7 +210,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: _activeTab == 'projects' 
                           ? AppTheme.primaryColor 
-                          : Colors.transparent,
+                          : const Color.fromARGB(255, 255, 255, 255),
                       foregroundColor: _activeTab == 'projects' 
                           ? Colors.white 
                           : AppTheme.primaryColor,
@@ -248,10 +248,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
       // Navegação inferior
       bottomNavigationBar: BottomNavigation(
-        currentRoute: 'Dashboard',
+        currentRoute: '/dashboard',
         onNavigate: (route) {
-          if (route == 'Dashboard') return;
-          context.go('/$route');
+          if (route == '/dashboard') return;
+          context.go(route);
         },
       ),
     );

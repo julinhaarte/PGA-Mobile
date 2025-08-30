@@ -149,7 +149,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
 
                     // Status
                     DropdownButtonFormField<String>(
-                      value: _selectedStatus,
+                      initialValue: _selectedStatus,
                       decoration: const InputDecoration(
                         labelText: 'Status',
                         prefixIcon: Icon(Icons.flag),
@@ -254,10 +254,10 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
 
       // Navegação inferior
       bottomNavigationBar: BottomNavigation(
-        currentRoute: 'CreateProject',
+        currentRoute: '/create-project',
         onNavigate: (route) {
-          if (route == 'CreateProject') return;
-          context.go('/$route');
+          if (route == '/create-project') return;
+          context.go(route);
         },
       ),
     );

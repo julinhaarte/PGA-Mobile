@@ -189,37 +189,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
             // Informações da Instituição
             Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    const Text(
-                      'Fatec Votorantim',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: AppTheme.primaryColor,
+              child: Container(
+                color: Color(0xFFFFFFFF),
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                      const Text(
+                        'Fatec Votorantim',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.primaryColor,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Sistema de Gestão de Projetos Acadêmicos',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: AppTheme.textSecondaryColor,
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Sistema de Gestão de Projetos Acadêmicos',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: AppTheme.textSecondaryColor,
+                        ),
+                        textAlign: TextAlign.center,
                       ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      '© 2025 Todos os direitos reservados',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey,
+                      const SizedBox(height: 8),
+                      const Text(
+                        '© 2025 Todos os direitos reservados',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey,
+                        ),
+                        textAlign: TextAlign.center,
                       ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -229,10 +232,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
       // Navegação inferior
       bottomNavigationBar: BottomNavigation(
-        currentRoute: 'Settings',
+        currentRoute: '/settings',
         onNavigate: (route) {
-          if (route == 'Settings') return;
-          context.go('/$route');
+          if (route == '/settings') return;
+          context.go(route);
         },
       ),
     );
@@ -262,8 +265,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
         const SizedBox(height: 16),
         Card(
-          child: Column(
-            children: children,
+          child: Container(
+            color: Color(0xFFFFFFFF),
+            child: Column(
+              children: children,
+            ),
           ),
         ),
       ],

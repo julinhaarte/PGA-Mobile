@@ -1,3 +1,4 @@
+import 'package:go_router/go_router.dart';
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../widgets/project_card.dart';
@@ -181,10 +182,10 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
 
       // Navegação inferior
       bottomNavigationBar: BottomNavigation(
-        currentRoute: 'Projects',
+        currentRoute: '/projects',
         onNavigate: (route) {
-          if (route == 'Projects') return;
-          Navigator.of(context).pushReplacementNamed('/$route');
+          if (route == '/projects') return;
+          context.go(route);
         },
       ),
     );
