@@ -40,7 +40,7 @@ class AppTheme {
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: primaryColor,
-          side: const BorderSide(color: primaryColor),
+          side: const BorderSide(color: Colors.transparent),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
@@ -57,14 +57,14 @@ class AppTheme {
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: const Color(0xFFFAFAFA),
+        fillColor: const Color.fromARGB(255, 238, 238, 238),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: Color.fromARGB(255, 255, 255, 255)),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Color.fromARGB(255, 255, 255, 255)),
+          borderSide: const BorderSide(color: Color.fromARGB(255, 184, 184, 184)),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),

@@ -95,6 +95,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
                     // Card de Login
                     Card(
+                      color: Colors.white,
                       child: Padding(
                         padding: const EdgeInsets.all(24),
                         child: Column(

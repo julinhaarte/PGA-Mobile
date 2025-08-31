@@ -128,6 +128,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                           labelStyle: TextStyle(
                             color: isSelected ? Colors.white : AppTheme.textPrimaryColor,
                           ),
+                          side: isSelected ? null : BorderSide.none,
                         ),
                       );
                     }).toList(),

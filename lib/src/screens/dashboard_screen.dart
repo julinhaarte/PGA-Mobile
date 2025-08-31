@@ -98,7 +98,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
                   ),
-                  textAlign: TextAlign.center,
+                  textAlign: TextAlign.left,
                 ),
                 SizedBox(height: 20),
                 Row(
@@ -190,15 +190,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: _activeTab == 'overview' 
                           ? AppTheme.primaryColor 
-                          : Colors.transparent,
+                          : Colors.white,
                       foregroundColor: _activeTab == 'overview' 
                           ? Colors.white 
                           : AppTheme.primaryColor,
-                      side: BorderSide(
-                        color: _activeTab == 'overview' 
-                            ? Colors.transparent 
-                            : AppTheme.primaryColor,
-                      ),
                     ),
                     child: const Text('Visão Geral'),
                   ),
@@ -214,11 +209,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       foregroundColor: _activeTab == 'projects' 
                           ? Colors.white 
                           : AppTheme.primaryColor,
-                      side: BorderSide(
-                        color: _activeTab == 'projects' 
-                            ? Colors.transparent 
-                            : AppTheme.primaryColor,
-                      ),
                     ),
                     child: const Text('Projetos'),
                   ),
@@ -279,11 +269,11 @@ class _InfoItem extends StatelessWidget {
         Text(
           value,
           style: const TextStyle(
-            fontSize: 20,
+            fontSize: 12,
             fontWeight: FontWeight.bold,
             color: Colors.white,
           ),
-          textAlign: TextAlign.center,
+          textAlign: TextAlign.left,
         ),
       ],
     );

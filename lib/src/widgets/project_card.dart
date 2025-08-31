@@ -14,8 +14,11 @@ class ProjectCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(29), 
+      ),
       child: Container(
-        color: Color(0xFFFFFFFF),
+        color: const Color(0xFFFFFFFF),
         child: InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(16),
@@ -40,7 +43,7 @@ class ProjectCard extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
                         color: _getStatusColor(project['status']),
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
                         project['status'],
@@ -73,7 +76,7 @@ class ProjectCard extends StatelessWidget {
                         style: const TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.bold,
-                          color: AppTheme.primaryColor,
+                          color: Color.fromARGB(255, 17, 14, 14),
                         ),
                       ),
                     ],

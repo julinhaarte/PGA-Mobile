@@ -41,15 +41,15 @@ class BottomNavigation extends StatelessWidget {
     ];
 
     return Container(
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         color: Colors.white,
-        border: const Border(
+        border: Border(
           top: BorderSide(
             color: Colors.white,
             width: 1,
           ),
         ),
-        boxShadow: const [
+        boxShadow: [
           BoxShadow(
             color: Colors.black12,
             blurRadius: 4,

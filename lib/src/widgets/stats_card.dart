@@ -17,22 +17,24 @@ class StatsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
+        shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(25)),
       child: Container(
-        color: Color(0xFFFFFFFF),
+        color: const Color(0xFFFFFFFF),
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(10),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Text(
                 icon,
-                style: const TextStyle(fontSize: 32),
+                style: const TextStyle(fontSize: 26),
               ),
               const SizedBox(height: 8),
               Text(
                 value,
                 style: TextStyle(
-                  fontSize: 24,
+                  fontSize: 20,
                   fontWeight: FontWeight.bold,
                   color: color,
                 ),
@@ -41,7 +43,7 @@ class StatsCard extends StatelessWidget {
               Text(
                 title,
                 style: const TextStyle(
-                  fontSize: 12,
+                  fontSize: 10,
                   color: Colors.grey,
                 ),
                 textAlign: TextAlign.center,
