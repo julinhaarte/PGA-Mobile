@@ -1,7 +1,7 @@
 <br id="topo">
 <div align="center">
   
-![banner](https://i.imgur.com/FyxzavU.png)
+![banner](https://github.com/julinhaarte/PGA-Mobile/blob/main/assets/images/PGA.png)
 
 </div>
 
