@@ -156,9 +156,18 @@
 
 ## Protótipo de Alta Fidelidade
 
-![Protótipo alta fidelidade](https://i.imgur.com/vqTm6Yx.png)
-
-#### O Protótipo foi construido usando o [Figma](https://www.figma.com/design/fGjaMNQejB1JcliVylMCJf/PGA?node-id=7-5&t=uPFd3fqHqdSqladm-0)
+<details>
+   <summary>Clique aqui para visualizar as telas do App</summary>
+    <br>
+    <div align="center">
+    <img src="https://github.com/julinhaarte/PGA-Mobile/blob/main/assets/images/Screenshot_1756767204.png" width="15%">
+    <img src="https://github.com/julinhaarte/PGA-Mobile/blob/main/assets/images/Screenshot_1756767220.png" width="15%"> 
+    <img src="https://github.com/julinhaarte/PGA-Mobile/blob/main/assets/images/Screenshot_1756767237.png" width="15%">
+    <img src="https://github.com/julinhaarte/PGA-Mobile/blob/main/assets/images/Screenshot_1756767244.png" width="15%">
+    <img src="https://github.com/julinhaarte/PGA-Mobile/blob/main/assets/images/Screenshot_1756767249.png" width="15%">
+    <img src="https://github.com/julinhaarte/PGA-Mobile/blob/main/assets/images/Screenshot_1756767266.png" width="15%">
+    </div>
+</details>
 
 → [Voltar ao topo](#topo)
 
