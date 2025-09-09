@@ -149,7 +149,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
 
                     // Status
                     DropdownButtonFormField<String>(
-                      initialValue: _selectedStatus,
+                      value: _selectedStatus,
                       decoration: const InputDecoration(
                         labelText: 'Status',
                         prefixIcon: Icon(Icons.flag),
