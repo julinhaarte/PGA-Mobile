@@ -228,13 +228,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
 
       // FAB para criar projeto
-      floatingActionButton: FloatingActionButton.extended(
+      /* floatingActionButton: FloatingActionButton.extended(
         onPressed: () => context.go('/create-project'),
         backgroundColor: AppTheme.primaryColor,
         foregroundColor: Colors.white,
         icon: const Icon(Icons.add),
         label: const Text('Novo Projeto'),
-      ),
+      ),*/
 
       // Navegação inferior
       bottomNavigationBar: BottomNavigation(
