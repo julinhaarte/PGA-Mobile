@@ -1,7 +1,14 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:http/http.dart' as http;
+import '../services/auth_storage.dart';
 import '../theme/app_theme.dart';
 import '../widgets/bottom_navigation.dart';
+import '../services/local_db.dart';
+import '../services/sync_service.dart';
+
+const BACKEND_BASE = 'http://192.168.0.248:3000';
 
 class CreateProjectScreen extends StatefulWidget {
   const CreateProjectScreen({super.key});
@@ -56,6 +63,18 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
     'Média',
     'Baixa',
   ];
+
+  // mappings name -> id (populated from server)
+  final Map<String, int> _eixoNameToId = {};
+  final Map<String, int> _temaNameToId = {};
+  final Map<String, int> _priorityNameToId = {};
+  // PGA year options and mapping year->pga_id
+  final List<String> _pgaOptions = [];
+  final Map<String, int> _pgaYearToId = {};
+  // store full PGA objects returned from server so we can use the id later
+  final List<Map<String, dynamic>> _pgaObjects = [];
+  // direct lookup year -> full PGA object (safer / faster)
+  final Map<String, Map<String, dynamic>> _pgaByYear = {};
   
   // Listas para pessoas e etapas
   List<Map<String, dynamic>> _responsiblePeople = [];
@@ -67,6 +86,148 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
   void initState() {
     super.initState();
     _costController.text = 'R\$ 0,00';
+    // carregar opções do backend
+    _loadSelectOptions();
+  }
+
+  Future<Map<String, String>> _authHeaders() async {
+    final token = await AuthStorage.readToken();
+    final headers = {'Content-Type': 'application/json'};
+    if (token != null) headers['Authorization'] = 'Bearer $token';
+    return headers;
+  }
+
+  Future<void> _loadSelectOptions() async {
+    await Future.wait([
+      _loadEixos(),
+      _loadTemas(),
+      _loadPriorities(),
+      _loadPgas(),
+    ]);
+  }
+
+  Future<void> _loadEixos() async {
+    try {
+      final headers = await _authHeaders();
+      final res = await http.get(Uri.parse('$BACKEND_BASE/thematic-axis'), headers: headers);
+      if (res.statusCode == 200) {
+        final List data = jsonDecode(res.body) as List;
+        final List<String> opts = [];
+        for (final item in data) {
+          final numero = item['numero']?.toString() ?? '';
+          final nome = item['nome'] ?? item['descricao'] ?? 'Eixo';
+          final display = numero.isNotEmpty ? '${numero.padLeft(2, '0')} - $nome' : nome;
+          opts.add(display);
+          if (item['eixo_id'] != null) {
+            _eixoNameToId[display] = (item['eixo_id'] as num).toInt();
+          } else if (item['id'] != null) {
+            _eixoNameToId[display] = (item['id'] as num).toInt();
+          }
+        }
+        setState(() {
+          _thematicAxisOptions.clear();
+          _thematicAxisOptions.addAll(opts);
+          if (opts.isNotEmpty) _selectedThematicAxis = opts.first;
+        });
+      }
+    } catch (e) {
+      debugPrint('Erro ao carregar eixos: $e');
+    }
+  }
+
+  Future<void> _loadTemas() async {
+    try {
+      final headers = await _authHeaders();
+      final res = await http.get(Uri.parse('$BACKEND_BASE/themes'), headers: headers);
+      if (res.statusCode == 200) {
+        final List data = jsonDecode(res.body) as List;
+        final List<String> opts = [];
+        for (final item in data) {
+          final nome = item['nome'] ?? item['descricao'] ?? 'Tema';
+          // try build cat code if available
+          final eixoNumero = item['eixo'] != null ? (item['eixo']['numero']?.toString() ?? '') : (item['eixo_numero']?.toString() ?? '');
+          final temaNumero = item['numero']?.toString() ?? item['tema_numero']?.toString() ?? '';
+          final display = (eixoNumero.isNotEmpty && temaNumero.isNotEmpty)
+              ? 'cat ${eixoNumero}.${temaNumero.padLeft(2, '0')} - $nome'
+              : nome;
+          opts.add(display);
+          if (item['tema_id'] != null) {
+            _temaNameToId[display] = (item['tema_id'] as num).toInt();
+          } else if (item['id'] != null) {
+            _temaNameToId[display] = (item['id'] as num).toInt();
+          }
+        }
+        setState(() {
+          _projectIdOptions.clear();
+          _projectIdOptions.addAll(opts);
+          if (opts.isNotEmpty) _selectedProjectId = opts.first;
+        });
+      }
+    } catch (e) {
+      debugPrint('Erro ao carregar temas: $e');
+    }
+  }
+
+  Future<void> _loadPriorities() async {
+    try {
+      final headers = await _authHeaders();
+      final res = await http.get(Uri.parse('$BACKEND_BASE/priority-action'), headers: headers);
+      if (res.statusCode == 200) {
+        final List data = jsonDecode(res.body) as List;
+        final List<String> opts = [];
+        for (final item in data) {
+          final nome = item['nome'] ?? item['descricao'] ?? 'Prioridade';
+          opts.add(nome);
+          if (item['prioridade_id'] != null) {
+            _priorityNameToId[nome] = (item['prioridade_id'] as num).toInt();
+          } else if (item['id'] != null) {
+            _priorityNameToId[nome] = (item['id'] as num).toInt();
+          }
+        }
+        setState(() {
+          _priorityOptions.clear();
+          _priorityOptions.addAll(opts);
+          if (opts.isNotEmpty) _selectedPriority = opts.first;
+        });
+      }
+    } catch (e) {
+      debugPrint('Erro ao carregar prioridades: $e');
+    }
+  }
+
+  Future<void> _loadPgas() async {
+    try {
+      final headers = await _authHeaders();
+      final res = await http.get(Uri.parse('$BACKEND_BASE/pga'), headers: headers);
+      if (res.statusCode == 200) {
+        final List data = jsonDecode(res.body) as List;
+        final List<String> opts = [];
+        _pgaObjects.clear();
+        _pgaByYear.clear();
+        _pgaYearToId.clear();
+        for (final raw in data) {
+          final item = Map<String, dynamic>.from(raw);
+          _pgaObjects.add(item);
+          final ano = item['ano']?.toString() ?? '';
+          final titulo = ano.isNotEmpty ? ano : (item['titulo']?.toString() ?? 'PGA');
+          if (!opts.contains(titulo)) opts.add(titulo);
+          _pgaByYear[titulo] = item;
+          final idVal = item['pga_id'] ?? item['id'];
+          if (idVal != null) _pgaYearToId[titulo] = (idVal as num).toInt();
+        }
+        setState(() {
+          _pgaOptions
+            ..clear()
+            ..addAll(opts);
+          _yearOptions
+            ..clear()
+            ..addAll(opts);
+          if (opts.isNotEmpty) _selectedYear = opts.first;
+        });
+      }
+    } catch (e) {
+      debugPrint('Erro ao carregar PGAs: $e');
+    }
   }
 
   @override
@@ -121,9 +282,8 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
   }
 
   void _removeCollaborator(String id) {
-    setState(() {
-      _collaborators.removeWhere((collaborator) => collaborator['id'] == id);
-    });
+    // removed: not referenced anywhere in the UI; collaborators are removed elsewhere
+    // kept empty intentionally
   }
 
   void _addProjectStep() {
@@ -156,9 +316,8 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
   }
 
   void _removeProblemSituation(String id) {
-    setState(() {
-      _problemSituations.removeWhere((situation) => situation['id'] == id);
-    });
+    // removed: not referenced directly in the UI; list manipulation kept when needed
+    // kept empty intentionally
   }
 
   Future<void> _handleSubmit() async {
@@ -167,25 +326,99 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
     setState(() {
       _isLoading = true;
     });
+    try {
+      // Construir objeto do projeto a partir do formulário
+      final project = {
+        'nome': _nameController.text,
+        'descricao': _descriptionController.text,
+        'justificativa': _justificationController.text,
+        'objetivos': _objectivesController.text,
+        'data_inicio': _startDateController.text,
+        'data_fim': _endDateController.text,
+        'custo': _costController.text,
+        'eixo': _selectedThematicAxis,
+        'tema': _selectedProjectId,
+        'ano': _selectedYear,
+        'prioridade': _selectedPriority,
+        'responsaveis': _responsiblePeople,
+        'colaboradores': _collaborators,
+        'etapas': _projectSteps,
+        'problemas': _problemSituations,
+      };
 
-    // Simular criação do projeto
-    await Future.delayed(const Duration(milliseconds: 1500));
+      // gerar localId
+      final localId = DateTime.now().millisecondsSinceEpoch.toString();
 
-    if (mounted) {
-      setState(() {
-        _isLoading = false;
-      });
-      
-      // Mostrar mensagem de sucesso
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Ação/Projeto registrado com sucesso!'),
-          backgroundColor: Colors.green,
-        ),
-      );
-      
-      // Voltar para a tela anterior
-      context.go('/projects');
+      final db = LocalDB();
+      // salvar no SQLite local com local_id
+      await db.saveProject(jsonEncode(project), localId: localId);
+
+      // mapear payload para o formato esperado pelo backend (`CreateProject1Dto`)
+      // map selected display values to server-side ids using mapping dicts
+      // derive pga id from stored objects: prefer direct object lookup, fallback to year->id map
+      int? mappedPgaId;
+      final selectedObj = _pgaByYear[_selectedYear];
+      if (selectedObj != null) {
+        final idVal = selectedObj['pga_id'] ?? selectedObj['id'];
+        if (idVal != null) mappedPgaId = (idVal as num).toInt();
+      }
+      mappedPgaId ??= _pgaYearToId[_selectedYear];
+      final int? mappedEixoId = _eixoNameToId[_selectedThematicAxis];
+      final int? mappedTemaId = _temaNameToId[_selectedProjectId];
+      final int? mappedPrioridadeId = _priorityNameToId[_selectedPriority];
+
+      if (mappedPgaId == null) debugPrint('Aviso: pga_id nao encontrado para ano "${_selectedYear}"');
+      if (mappedEixoId == null) debugPrint('Aviso: eixo_id nao encontrado para "${_selectedThematicAxis}"');
+      if (mappedTemaId == null) debugPrint('Aviso: tema_id nao encontrado para "${_selectedProjectId}"');
+      if (mappedPrioridadeId == null) debugPrint('Aviso: prioridade_id nao encontrado para "${_selectedPriority}"');
+
+      final payload = {
+        'codigo_projeto': 'LOCAL-${localId}',
+        'nome_projeto': _nameController.text,
+        // use mapped ids when available, otherwise null so backend can validate
+        'pga_id': mappedPgaId,
+        'eixo_id': mappedEixoId,
+        'prioridade_id': mappedPrioridadeId,
+        'tema_id': mappedTemaId,
+        'o_que_sera_feito': _descriptionController.text,
+        'por_que_sera_feito': _justificationController.text,
+        'data_inicio': _startDateController.text.isNotEmpty ? _startDateController.text : null,
+        'data_final': _endDateController.text.isNotEmpty ? _endDateController.text : null,
+        'objetivos_institucionais_referenciados': _objectivesController.text,
+        'obrigatorio_inclusao': _mandatoryInclusion,
+        'obrigatorio_sustentabilidade': _mandatorySustainability,
+        'custo_total_estimado': double.tryParse(_costController.text.replaceAll(RegExp(r'[^0-9\.]'), '')) ?? 0.0,
+        'fonte_recursos': _resourceSourceController.text,
+      };
+
+      // enfileirar sync (POST /project1) com referência local
+      await db.enqueueSync('create_project', '/project1', 'POST', jsonEncode(payload), localRef: localId);
+
+  // tentar sincronizar agora (se online)
+  final sync = SyncService();
+  await sync.trySyncAll(BACKEND_BASE);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Projeto salvo localmente e enfileirado para sincronização.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        context.go('/projects');
+      }
+    } catch (e) {
+      debugPrint('Erro ao salvar projeto localmente: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Erro ao salvar projeto. Tente novamente.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -556,7 +789,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                   ),
                 ],
               ),
-
+            
                     const SizedBox(height: 32),
 
               // Botão de Registro

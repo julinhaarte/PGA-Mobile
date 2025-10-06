@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../services/auth_storage.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import '../theme/app_theme.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -30,15 +33,79 @@ class _LoginScreenState extends State<LoginScreen> {
       _isLoading = true;
     });
 
-    // Simular login
-    await Future.delayed(const Duration(milliseconds: 1500));
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
 
-    if (mounted) {
-      setState(() {
-        _isLoading = false;
-      });
-      context.go('/dashboard');
+    try {
+      final url = Uri.parse('http://192.168.0.248:3000/auth/login');
+      final res = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'email': email, 'senha': password}),
+      );
+
+      if (res.statusCode == 201 || res.statusCode == 200) {
+        final body = res.body.isNotEmpty ? jsonDecode(res.body) : null;
+        final token = body != null && body['access_token'] != null
+            ? body['access_token']
+            : body?['token'] ?? null;
+        print('Token recebido: $token');
+        if (token != null) {
+          await AuthStorage.saveToken(token as String);
+          if (mounted) {
+            setState(() => _isLoading = false);
+            context.go('/dashboard');
+          }
+          return;
+        }
+      }
+      if (mounted) {
+        final startOffline = await _showOfflinePrompt();
+        if (startOffline) {
+          if (mounted) setState(() => _isLoading = false);
+          if (mounted) context.go('/dashboard');
+          return;
+        } else {
+          if (mounted) setState(() => _isLoading = false);
+          return;
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        final startOffline = await _showOfflinePrompt();
+        if (startOffline) {
+          if (mounted) setState(() => _isLoading = false);
+          if (mounted) context.go('/dashboard');
+          return;
+        } else {
+          if (mounted) setState(() => _isLoading = false);
+          return;
+        }
+      }
     }
+  }
+
+  Future<bool> _showOfflinePrompt() async {
+    return await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Iniciar modo offline?'),
+            content: const Text(
+                'Não foi possível contactar o servidor. Deseja iniciar no modo offline?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(false),
+                child: const Text('Cancelar'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.of(ctx).pop(true),
+                child: const Text('Iniciar offline'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
   }
 
   @override
@@ -63,7 +130,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: Column(
                   children: [
                     const SizedBox(height: 60),
-                    
+
                     // Logo e Título
                     Column(
                       children: [
@@ -145,7 +212,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                 prefixIcon: const Icon(Icons.lock),
                                 suffixIcon: IconButton(
                                   icon: Icon(
-                                    _obscurePassword ? Icons.visibility : Icons.visibility_off,
+                                    _obscurePassword
+                                        ? Icons.visibility
+                                        : Icons.visibility_off,
                                   ),
                                   onPressed: () {
                                     setState(() {
@@ -175,7 +244,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                         width: 20,
                                         child: CircularProgressIndicator(
                                           strokeWidth: 2,
-                                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                          valueColor:
+                                              AlwaysStoppedAnimation<Color>(
+                                                  Colors.white),
                                         ),
                                       )
                                     : const Text('Entrar'),

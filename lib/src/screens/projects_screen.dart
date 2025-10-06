@@ -1,8 +1,14 @@
+import 'dart:convert';
 import 'package:go_router/go_router.dart';
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../widgets/project_card.dart';
 import '../widgets/bottom_navigation.dart';
+import '../services/local_db.dart';
+import '../services/sync_service.dart';
+import 'package:http/http.dart' as http;
+
+const BACKEND_BASE = 'http://10.0.2.2:3000'; // ajustar conforme emulador/dispositivo
 
 class ProjectsScreen extends StatefulWidget {
   const ProjectsScreen({super.key});
@@ -15,48 +21,9 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
   String _selectedStatus = 'all';
   String _searchQuery = '';
 
-  final List<Map<String, dynamic>> _mockProjects = [
-    {
-      'id': '1',
-      'name': 'Sistema de Gestão Acadêmica',
-      'progress': 75,
-      'status': 'Em andamento',
-      'deadline': '15/03/2025',
-      'responsible': 'Ana Silva',
-    },
-    {
-      'id': '2',
-      'name': 'Modernização Laboratórios',
-      'progress': 45,
-      'status': 'Em andamento',
-      'deadline': '28/02/2025',
-      'responsible': 'Carlos Santos',
-    },
-    {
-      'id': '3',
-      'name': 'Portal de Comunicação',
-      'progress': 20,
-      'status': 'Em andamento',
-      'deadline': '10/02/2025',
-      'responsible': 'Maria Oliveira',
-    },
-    {
-      'id': '4',
-      'name': 'Sistema de Biblioteca',
-      'progress': 100,
-      'status': 'Concluído',
-      'deadline': '01/01/2025',
-      'responsible': 'João Silva',
-    },
-    {
-      'id': '5',
-      'name': 'Manutenção de Equipamentos',
-      'progress': 30,
-      'status': 'Atrasado',
-      'deadline': '20/01/2025',
-      'responsible': 'Pedro Santos',
-    },
-  ];
+  final LocalDB _localDb = LocalDB();
+  final SyncService _sync = SyncService();
+  List<Map<String, dynamic>> _projects = [];
 
   final List<Map<String, String>> _statusFilters = [
     {'label': 'Todos', 'value': 'all'},
@@ -66,7 +33,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
   ];
 
   List<Map<String, dynamic>> get _filteredProjects {
-    return _mockProjects.where((project) {
+    return _projects.where((project) {
       final matchesStatus = _selectedStatus == 'all' || 
                            project['status'].toLowerCase() == _selectedStatus;
       final matchesSearch = _searchQuery.isEmpty || 
@@ -74,6 +41,53 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                            project['responsible'].toLowerCase().contains(_searchQuery.toLowerCase());
       return matchesStatus && matchesSearch;
     }).toList();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLocalProjects();
+    // tentar sincronizar em background
+    _sync.trySyncAll(BACKEND_BASE).then((_) => _loadLocalProjects()).catchError((e) => debugPrint('sync error: $e'));
+  }
+
+  Future<void> _loadLocalProjects() async {
+    final rows = await _localDb.getProjects();
+    setState(() {
+      _projects = rows.map((r) {
+        final data = r['data'] as String;
+        try {
+          final parsed = Map<String, dynamic>.from(jsonDecode(data));
+          return parsed;
+        } catch (_) {
+          return {'id': r['local_id'] ?? r['id'].toString(), 'name': data};
+        }
+      }).toList();
+    });
+  }
+
+  Future<void> _onRefresh() async {
+    // tentar sync (enviar fila)
+    await _sync.trySyncAll(BACKEND_BASE);
+
+    // tentar buscar a lista atual do backend e atualizar cache local
+    try {
+      final resp = await http.get(Uri.parse('$BACKEND_BASE/project1'));
+      if (resp.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(resp.body);
+        // salvar cada projeto no local DB (substituir cache simplificado)
+        for (final p in data) {
+          await _localDb.saveProject(jsonEncode(p), localId: p['codigo_projeto']?.toString());
+        }
+        await _loadLocalProjects();
+        return;
+      }
+    } catch (e) {
+      debugPrint('Erro ao buscar projetos do backend: $e');
+    }
+
+    // fallback: recarregar local
+    await _loadLocalProjects();
   }
 
   @override
@@ -161,21 +175,24 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                       ],
                     ),
                   )
-                : ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemCount: _filteredProjects.length,
-                    itemBuilder: (context, index) {
-                      final project = _filteredProjects[index];
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: ProjectCard(
-                          project: project,
-                          onTap: () {
-                            // Navegar para detalhes do projeto
-                          },
-                        ),
-                      );
-                    },
+                : RefreshIndicator(
+                    onRefresh: _onRefresh,
+                    child: ListView.builder(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      itemCount: _filteredProjects.length,
+                      itemBuilder: (context, index) {
+                        final project = _filteredProjects[index];
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: ProjectCard(
+                            project: project,
+                            onTap: () {
+                              // Navegar para detalhes do projeto
+                            },
+                          ),
+                        );
+                      },
+                    ),
                   ),
           ),
         ],
