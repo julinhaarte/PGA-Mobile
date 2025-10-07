@@ -1,9 +1,9 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
 import '../services/auth_storage.dart';
-import '../theme/app_theme.dart';
 import '../widgets/bottom_navigation.dart';
 import '../services/local_db.dart';
 import '../services/sync_service.dart';
@@ -77,10 +77,53 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
   final Map<String, Map<String, dynamic>> _pgaByYear = {};
   
   // Listas para pessoas e etapas
-  List<Map<String, dynamic>> _responsiblePeople = [];
-  List<Map<String, dynamic>> _collaborators = [];
-  List<Map<String, dynamic>> _projectSteps = [];
-  List<Map<String, dynamic>> _problemSituations = [];
+  final List<Map<String, dynamic>> _responsiblePeople = [];
+  final List<Map<String, dynamic>> _collaborators = [];
+  final List<Map<String, dynamic>> _projectSteps = [];
+  final List<Map<String, dynamic>> _problemSituations = [];
+  // dados carregados do backend
+  List<Map<String, dynamic>> _users = [];
+  List<Map<String, dynamic>> _deliverables = [];
+  List<Map<String, dynamic>> _problemOptions = [];
+  List<Map<String, dynamic>> _workloadTypes = [];
+  // local DB instance for drafts and sync
+  final LocalDB _localDb = LocalDB();
+  String? _draftLocalId;
+  // autosave timer
+  Timer? _autosaveTimer;
+
+  // helper: safely convert dynamic id (num or string) to int
+  int? _toInt(dynamic v) {
+    if (v == null) return null;
+    if (v is num) return v.toInt();
+    if (v is String) return int.tryParse(v);
+    return null;
+  }
+
+  // helper: build user label 'Nome (Cargo)' with fallback
+  String _userLabel(Map<String, dynamic> u) {
+    final roleRaw = (u['tipo_usuario'] ?? u['tipoUsuario'] ?? u['cargo']);
+    final role = roleRaw?.toString();
+    final name = (u['nome'] ?? u['name'] ?? u['email'] ?? 'Usuário').toString();
+    return role != null && role.isNotEmpty ? '$name ($role)' : name;
+  }
+
+  // helper: convert dd/mm/yyyy to ISO YYYY-MM-DD, returns null if invalid/empty
+  String? _toIsoDate(String? ddmmyyyy) {
+    if (ddmmyyyy == null) return null;
+    final parts = ddmmyyyy.split('/');
+    if (parts.length != 3) return null;
+    final d = int.tryParse(parts[0]);
+    final m = int.tryParse(parts[1]);
+    final y = int.tryParse(parts[2]);
+    if (d == null || m == null || y == null) return null;
+    try {
+      final dt = DateTime(y, m, d);
+      return '${dt.year.toString().padLeft(4, '0')}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
+    } catch (_) {
+      return null;
+    }
+  }
 
   @override
   void initState() {
@@ -88,6 +131,136 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
     _costController.text = 'R\$ 0,00';
     // carregar opções do backend
     _loadSelectOptions();
+    _loadPeopleAndDeliverables();
+    // carregar rascunho salvo (se existir)
+    _loadDraft();
+    // iniciar autosave periódico (a cada 30 segundos)
+    _autosaveTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      _saveDraft();
+    });
+    // ensure there's always one responsible entry so UI and state match
+    if (_responsiblePeople.isEmpty) _addResponsiblePerson();
+  }
+
+  Future<void> _loadDraft() async {
+    try {
+      final drafts = await _localDb.getDrafts('create_project');
+      if (drafts.isNotEmpty) {
+        // use the most recent draft
+        final row = drafts.last;
+        final dataStr = row['data'] as String?;
+        if (dataStr != null && dataStr.isNotEmpty) {
+          final Map<String, dynamic> doc = jsonDecode(dataStr) as Map<String, dynamic>;
+          setState(() {
+            _draftLocalId = row['local_id'] as String?;
+            _nameController.text = doc['nome'] ?? '';
+            _descriptionController.text = doc['descricao'] ?? '';
+            _justificationController.text = doc['justificativa'] ?? '';
+            _objectivesController.text = doc['objetivos'] ?? '';
+            _startDateController.text = doc['data_inicio'] ?? '';
+            _endDateController.text = doc['data_fim'] ?? '';
+            _costController.text = doc['custo'] ?? _costController.text;
+            _resourceSourceController.text = doc['fonte_recursos'] ?? '';
+            _selectedThematicAxis = doc['eixo'] ?? _selectedThematicAxis;
+            _selectedProjectId = doc['tema'] ?? _selectedProjectId;
+            _selectedYear = doc['ano'] ?? _selectedYear;
+            _selectedPriority = doc['prioridade'] ?? _selectedPriority;
+            // lists
+            final rp = doc['responsaveis'] as List?;
+            if (rp != null) {
+              _responsiblePeople.clear();
+              _responsiblePeople.addAll(rp.map((e) => Map<String, dynamic>.from(e as Map)).toList());
+            }
+            final col = doc['colaboradores'] as List?;
+            if (col != null) {
+              _collaborators.clear();
+              _collaborators.addAll(col.map((e) => Map<String, dynamic>.from(e as Map)).toList());
+            }
+            final steps = doc['etapas'] as List?;
+            if (steps != null) {
+              _projectSteps.clear();
+              _projectSteps.addAll(steps.map((e) => Map<String, dynamic>.from(e as Map)).toList());
+            }
+            final probs = doc['problemas'] as List?;
+            if (probs != null) {
+              _problemSituations.clear();
+              _problemSituations.addAll(probs.map((e) => Map<String, dynamic>.from(e as Map)).toList());
+            }
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Erro ao carregar rascunho: $e');
+    }
+  }
+
+  Future<void> _saveDraft() async {
+    try {
+      final draft = {
+        'nome': _nameController.text,
+        'descricao': _descriptionController.text,
+        'justificativa': _justificationController.text,
+        'objetivos': _objectivesController.text,
+        'data_inicio': _startDateController.text,
+        'data_fim': _endDateController.text,
+        'custo': _costController.text,
+        'fonte_recursos': _resourceSourceController.text,
+        'eixo': _selectedThematicAxis,
+        'tema': _selectedProjectId,
+        'ano': _selectedYear,
+        'prioridade': _selectedPriority,
+        'responsaveis': _responsiblePeople,
+        'colaboradores': _collaborators,
+        'etapas': _projectSteps,
+        'problemas': _problemSituations,
+      };
+      final jsonStr = jsonEncode(draft);
+      // save (insert or update)
+      await _localDb.saveDraft('create_project', jsonStr, localId: _draftLocalId);
+      if (_draftLocalId == null) {
+        // create a local id placeholder so subsequent updates target the same logical draft
+        _draftLocalId = DateTime.now().millisecondsSinceEpoch.toString();
+      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Rascunho salvo localmente'), backgroundColor: Colors.green));
+    } catch (e) {
+      debugPrint('Erro ao salvar rascunho: $e');
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Falha ao salvar rascunho'), backgroundColor: Colors.red));
+    }
+  }
+
+  Future<void> _loadPeopleAndDeliverables() async {
+    try {
+      final headers = await _authHeaders();
+      final usersRes = await http.get(Uri.parse('$BACKEND_BASE/users'), headers: headers);
+      if (usersRes.statusCode == 200) {
+        final List data = jsonDecode(usersRes.body) as List;
+        _users = data.map((e) => Map<String, dynamic>.from(e)).toList();
+      }
+
+      // entregáveis
+      final deliversRes = await http.get(Uri.parse('$BACKEND_BASE/delivers'), headers: headers);
+      if (deliversRes.statusCode == 200) {
+        final List data = jsonDecode(deliversRes.body) as List;
+        _deliverables = data.map((e) => Map<String, dynamic>.from(e)).toList();
+      }
+
+      final problemsRes = await http.get(Uri.parse('$BACKEND_BASE/problem-situation'), headers: headers);
+      if (problemsRes.statusCode == 200) {
+        final List data = jsonDecode(problemsRes.body) as List;
+        _problemOptions = data.map((e) => Map<String, dynamic>.from(e)).toList();
+      }
+
+      // workload HAE (tipos de vínculo) - usado para colaboradores
+      final workloadRes = await http.get(Uri.parse('$BACKEND_BASE/workload-hae'), headers: headers);
+      if (workloadRes.statusCode == 200) {
+        final List data = jsonDecode(workloadRes.body) as List;
+        _workloadTypes = data.map((e) => Map<String, dynamic>.from(e)).toList();
+      }
+
+      setState(() {});
+    } catch (e) {
+      debugPrint('Erro ao carregar pessoas/entregaveis/problemas: $e');
+    }
   }
 
   Future<Map<String, String>> _authHeaders() async {
@@ -118,11 +291,8 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
           final nome = item['nome'] ?? item['descricao'] ?? 'Eixo';
           final display = numero.isNotEmpty ? '${numero.padLeft(2, '0')} - $nome' : nome;
           opts.add(display);
-          if (item['eixo_id'] != null) {
-            _eixoNameToId[display] = (item['eixo_id'] as num).toInt();
-          } else if (item['id'] != null) {
-            _eixoNameToId[display] = (item['id'] as num).toInt();
-          }
+          final eixoId = _toInt(item['eixo_id']) ?? _toInt(item['id']);
+          if (eixoId != null) _eixoNameToId[display] = eixoId;
         }
         setState(() {
           _thematicAxisOptions.clear();
@@ -148,14 +318,11 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
           final eixoNumero = item['eixo'] != null ? (item['eixo']['numero']?.toString() ?? '') : (item['eixo_numero']?.toString() ?? '');
           final temaNumero = item['numero']?.toString() ?? item['tema_numero']?.toString() ?? '';
           final display = (eixoNumero.isNotEmpty && temaNumero.isNotEmpty)
-              ? 'cat ${eixoNumero}.${temaNumero.padLeft(2, '0')} - $nome'
+              ? 'cat $eixoNumero.${temaNumero.padLeft(2, '0')} - $nome'
               : nome;
           opts.add(display);
-          if (item['tema_id'] != null) {
-            _temaNameToId[display] = (item['tema_id'] as num).toInt();
-          } else if (item['id'] != null) {
-            _temaNameToId[display] = (item['id'] as num).toInt();
-          }
+          final temaId = _toInt(item['tema_id']) ?? _toInt(item['id']);
+          if (temaId != null) _temaNameToId[display] = temaId;
         }
         setState(() {
           _projectIdOptions.clear();
@@ -178,11 +345,8 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
         for (final item in data) {
           final nome = item['nome'] ?? item['descricao'] ?? 'Prioridade';
           opts.add(nome);
-          if (item['prioridade_id'] != null) {
-            _priorityNameToId[nome] = (item['prioridade_id'] as num).toInt();
-          } else if (item['id'] != null) {
-            _priorityNameToId[nome] = (item['id'] as num).toInt();
-          }
+          final prId = _toInt(item['prioridade_id']) ?? _toInt(item['id']);
+          if (prId != null) _priorityNameToId[nome] = prId;
         }
         setState(() {
           _priorityOptions.clear();
@@ -213,7 +377,8 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
           if (!opts.contains(titulo)) opts.add(titulo);
           _pgaByYear[titulo] = item;
           final idVal = item['pga_id'] ?? item['id'];
-          if (idVal != null) _pgaYearToId[titulo] = (idVal as num).toInt();
+          final pgaId = _toInt(idVal);
+          if (pgaId != null) _pgaYearToId[titulo] = pgaId;
         }
         setState(() {
           _pgaOptions
@@ -232,6 +397,10 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
 
   @override
   void dispose() {
+  // try to save a draft before disposing controllers
+    _saveDraft();
+    // cancelar timer de autosave
+    _autosaveTimer?.cancel();
     _nameController.dispose();
     _descriptionController.dispose();
     _justificationController.dispose();
@@ -249,6 +418,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
       initialDate: DateTime.now().add(const Duration(days: 30)),
       firstDate: DateTime.now(),
       lastDate: DateTime.now().add(const Duration(days: 365)),
+      locale: const Locale('pt', 'BR'),
     );
     if (picked != null) {
       setState(() {
@@ -262,6 +432,8 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
       _responsiblePeople.add({
         'name': '',
         'id': DateTime.now().millisecondsSinceEpoch.toString(),
+        'pessoa_id': null,
+        'papel': 'Coordenador',
       });
     });
   }
@@ -277,13 +449,16 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
       _collaborators.add({
         'name': '',
         'id': DateTime.now().millisecondsSinceEpoch.toString(),
+        'pessoa_id': null,
+        'papel': 'Colaborador',
       });
     });
   }
 
   void _removeCollaborator(String id) {
-    // removed: not referenced anywhere in the UI; collaborators are removed elsewhere
-    // kept empty intentionally
+    setState(() {
+      _collaborators.removeWhere((c) => c['id'] == id);
+    });
   }
 
   void _addProjectStep() {
@@ -291,6 +466,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
       _projectSteps.add({
         'description': '',
         'deliverable': '',
+        'deliverable_id': null,
         'referenceNumber': '',
         'plannedDate': '',
         'actualDate': '',
@@ -316,8 +492,9 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
   }
 
   void _removeProblemSituation(String id) {
-    // removed: not referenced directly in the UI; list manipulation kept when needed
-    // kept empty intentionally
+    setState(() {
+      _problemSituations.removeWhere((p) => p['id'] == id);
+    });
   }
 
   Future<void> _handleSubmit() async {
@@ -360,20 +537,25 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
       final selectedObj = _pgaByYear[_selectedYear];
       if (selectedObj != null) {
         final idVal = selectedObj['pga_id'] ?? selectedObj['id'];
-        if (idVal != null) mappedPgaId = (idVal as num).toInt();
+        final maybe = _toInt(idVal);
+        if (maybe != null) mappedPgaId = maybe;
       }
       mappedPgaId ??= _pgaYearToId[_selectedYear];
       final int? mappedEixoId = _eixoNameToId[_selectedThematicAxis];
       final int? mappedTemaId = _temaNameToId[_selectedProjectId];
       final int? mappedPrioridadeId = _priorityNameToId[_selectedPriority];
 
-      if (mappedPgaId == null) debugPrint('Aviso: pga_id nao encontrado para ano "${_selectedYear}"');
-      if (mappedEixoId == null) debugPrint('Aviso: eixo_id nao encontrado para "${_selectedThematicAxis}"');
-      if (mappedTemaId == null) debugPrint('Aviso: tema_id nao encontrado para "${_selectedProjectId}"');
-      if (mappedPrioridadeId == null) debugPrint('Aviso: prioridade_id nao encontrado para "${_selectedPriority}"');
+      if (mappedPgaId == null) debugPrint('Aviso: pga_id nao encontrado para ano "$_selectedYear"');
+      if (mappedEixoId == null) debugPrint('Aviso: eixo_id nao encontrado para "$_selectedThematicAxis"');
+      if (mappedTemaId == null) debugPrint('Aviso: tema_id nao encontrado para "$_selectedProjectId"');
+      if (mappedPrioridadeId == null) debugPrint('Aviso: prioridade_id nao encontrado para "$_selectedPriority"');
 
-      final payload = {
-        'codigo_projeto': 'LOCAL-${localId}',
+  // convert form dates (dd/mm/yyyy) to ISO (YYYY-MM-DD) for backend
+  final isoStart = _toIsoDate(_startDateController.text);
+  final isoEnd = _toIsoDate(_endDateController.text);
+
+  final payload = {
+        'codigo_projeto': 'LOCAL-$localId',
         'nome_projeto': _nameController.text,
         // use mapped ids when available, otherwise null so backend can validate
         'pga_id': mappedPgaId,
@@ -382,8 +564,8 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
         'tema_id': mappedTemaId,
         'o_que_sera_feito': _descriptionController.text,
         'por_que_sera_feito': _justificationController.text,
-        'data_inicio': _startDateController.text.isNotEmpty ? _startDateController.text : null,
-        'data_final': _endDateController.text.isNotEmpty ? _endDateController.text : null,
+  'data_inicio': isoStart,
+  'data_final': isoEnd,
         'objetivos_institucionais_referenciados': _objectivesController.text,
         'obrigatorio_inclusao': _mandatoryInclusion,
         'obrigatorio_sustentabilidade': _mandatorySustainability,
@@ -394,9 +576,61 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
       // enfileirar sync (POST /project1) com referência local
       await db.enqueueSync('create_project', '/project1', 'POST', jsonEncode(payload), localRef: localId);
 
-  // tentar sincronizar agora (se online)
-  final sync = SyncService();
-  await sync.trySyncAll(BACKEND_BASE);
+      // enfileirar pessoas responsáveis (project-person) usando acao_projeto_local_ref
+        for (final person in _responsiblePeople) {
+        // if person has a selected pessoa_id mapping in the real app, use it; here we try to parse numeric id from name if present
+        int? pessoaId;
+          pessoaId = _toInt(person['pessoa_id']);
+
+        final personPayload = {
+          'acao_projeto_local_ref': localId,
+          // if we don't have pessoaId, backend may require it; keep optional for now
+          if (pessoaId != null) 'pessoa_id': pessoaId,
+          // default papel (if app has mapping, replace accordingly). Using 'Coordenador' as placeholder.
+          if (person['papel'] != null) 'papel': person['papel'],
+          if (person['papel'] == null) 'papel': 'Coordenador',
+        };
+        await db.enqueueSync('attach_person', '/project-person', 'POST', jsonEncode(personPayload), localRef: localId);
+      }
+
+      // enfileirar etapas do projeto (process-step) usando acao_projeto_local_ref
+      for (final step in _projectSteps) {
+        final plannedIso = _toIsoDate(step['plannedDate']?.toString());
+        final actualIso = _toIsoDate(step['actualDate']?.toString());
+        final stepPayload = {
+          'acao_projeto_local_ref': localId,
+          'descricao': step['description'] ?? '',
+          if (step['deliverable_id'] != null) 'entregavel_id': step['deliverable_id'],
+          if (step['referenceNumber'] != null && (step['referenceNumber'] as String).isNotEmpty) 'numero_ref': step['referenceNumber'],
+          if (plannedIso != null) 'data_verificacao_prevista': plannedIso,
+          if (actualIso != null) 'data_verificacao_realizada': actualIso,
+          if (step['verification'] != null && (step['verification'] as String).isNotEmpty) 'status_verificacao': step['verification'],
+        };
+        await db.enqueueSync('create_step', '/process-step', 'POST', jsonEncode(stepPayload), localRef: localId);
+      }
+
+      // enfileirar situações problema (problem-situation) usando acao_projeto_local_ref
+      for (final problema in _problemSituations) {
+        final probPayload = {
+          'acao_projeto_local_ref': localId,
+          'titulo': problema['situation'] ?? '',
+        };
+        await db.enqueueSync('create_problem', '/problem-situation', 'POST', jsonEncode(probPayload), localRef: localId);
+      }
+
+      // tentar sincronizar agora (se online)
+      final sync = SyncService();
+      await sync.trySyncAll(BACKEND_BASE);
+
+      // se havia um rascunho associado, remover após sucesso
+      if (_draftLocalId != null) {
+        try {
+          await _localDb.deleteDraftByLocalId(_draftLocalId!);
+          _draftLocalId = null;
+        } catch (e) {
+          debugPrint('Falha ao remover rascunho apos envio: $e');
+        }
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -470,7 +704,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                   borderRadius: BorderRadius.circular(8),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.grey.withOpacity(0.1),
+                      color: Colors.grey.withValues(alpha: 0.1),
                       spreadRadius: 1,
                       blurRadius: 3,
                       offset: const Offset(0, 1),
@@ -630,17 +864,21 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
               _buildSectionCard(
                 'Pessoas Envolvidas no Projeto',
                 [
+                  const Text('Responsáveis', style: TextStyle(fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 8),
                   ..._responsiblePeople.map((person) => _buildPersonField(
                     'Responsável',
                     person,
                     _removeResponsiblePerson,
                   )),
-                  if (_responsiblePeople.isEmpty)
-                    _buildPersonField(
-                      'Responsável #1',
-                      {'name': '', 'id': 'temp'},
-                      _removeResponsiblePerson,
-                    ),
+                  const SizedBox(height: 12),
+                  const Text('Colaboradores', style: TextStyle(fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 8),
+                  ..._collaborators.map((person) => _buildPersonField(
+                    'Colaborador',
+                    person,
+                    _removeCollaborator,
+                  )),
                   const SizedBox(height: 16),
                   Row(
                     children: [
@@ -736,16 +974,19 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                       labelText: 'Selecionar situação problema...',
                       border: OutlineInputBorder(),
                     ),
-                    items: const [
-                      DropdownMenuItem(value: 'situacao1', child: Text('Falta de recursos humanos')),
-                      DropdownMenuItem(value: 'situacao2', child: Text('Processo ineficiente')),
-                      DropdownMenuItem(value: 'situacao3', child: Text('Falta de capacitação')),
-                      DropdownMenuItem(value: 'situacao4', child: Text('Problemas de comunicação')),
-                      DropdownMenuItem(value: 'situacao5', child: Text('Falta de infraestrutura')),
-                    ],
+                    items: _problemOptions.map<DropdownMenuItem<String>>((p) {
+                      final id = p['id'] ?? p['problem_situation_id'];
+                      final title = (p['titulo'] ?? p['nome'] ?? p['descricao'] ?? 'Situação').toString();
+                      final val = id != null ? id.toString() : title;
+                      return DropdownMenuItem<String>(value: val, child: Text(title));
+                    }).toList(),
                     onChanged: (value) {
                       setState(() {
-                        // Aqui você pode adicionar lógica para gerenciar a situação selecionada
+                        // find object
+                        final sel = _problemOptions.firstWhere((p) => (p['id']?.toString() == value) || (p['titulo'] == value), orElse: () => {});
+                        if (sel.isNotEmpty) {
+                          _problemSituations.add({'situation': sel['titulo'] ?? sel['nome'] ?? value, 'id': DateTime.now().millisecondsSinceEpoch.toString(), 'problem_situation_id': sel['id']});
+                        }
                       });
                     },
                     isExpanded: true,
@@ -776,7 +1017,12 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                       const SizedBox(width: 12),
                       Expanded(
                         child: ElevatedButton.icon(
-                          onPressed: () {},
+                          onPressed: () {
+                            if (_problemSituations.isNotEmpty) {
+                              final lastId = _problemSituations.last['id'] as String?;
+                              if (lastId != null) _removeProblemSituation(lastId);
+                            }
+                          },
                           icon: const Icon(Icons.remove, size: 18),
                           label: const Text('Remover'),
                           style: ElevatedButton.styleFrom(
@@ -792,19 +1038,28 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
             
                     const SizedBox(height: 32),
 
-              // Botão de Registro
-                    SizedBox(
-                      width: double.infinity,
-                height: 50,
-                      child: ElevatedButton(
-                        onPressed: _isLoading ? null : _handleSubmit,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
+              // Botões: Salvar Rascunho + Registrar
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _saveDraft,
+                      child: const Text('Salvar Rascunho'),
                     ),
                   ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: SizedBox(
+                      height: 50,
+                      child: ElevatedButton(
+                        onPressed: _isLoading ? null : _handleSubmit,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
                         child: _isLoading
                             ? const SizedBox(
                                 height: 20,
@@ -814,11 +1069,14 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                                   valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                                 ),
                               )
-                      : const Text(
-                          'Registrar Ação/Projeto',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                            : const Text(
+                                'Registrar Ação/Projeto',
+                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                              ),
+                      ),
                     ),
-                ),
+                  ),
+                ],
               ),
 
               const SizedBox(height: 20),
@@ -847,7 +1105,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
         borderRadius: BorderRadius.circular(8),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
+            color: Colors.grey.withValues(alpha: 0.1),
             spreadRadius: 1,
             blurRadius: 3,
             offset: const Offset(0, 1),
@@ -900,15 +1158,22 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
     bool enabled = true,
     String? hintText,
   }) {
+    // remove duplicate entries while preserving order
+    final List<String> uniqueItems = [];
+    for (final it in items) {
+      if (!uniqueItems.contains(it)) uniqueItems.add(it);
+    }
+    final effectiveValue = (value.isEmpty ? null : (uniqueItems.contains(value) ? value : null));
+
     return DropdownButtonFormField<String>(
-      value: value.isEmpty ? null : value,
+      value: effectiveValue,
       decoration: InputDecoration(
         labelText: label,
         hintText: hintText,
         border: const OutlineInputBorder(),
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
       ),
-      items: items.map((item) {
+      items: uniqueItems.map((item) {
         return DropdownMenuItem(
           value: item,
           child: Text(item),
@@ -956,44 +1221,113 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
         border: Border.all(color: Colors.grey[300]!),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: DropdownButtonFormField<String>(
-              value: person['name']?.isNotEmpty == true ? person['name'] : null,
-              decoration: const InputDecoration(
-                labelText: 'Nome',
-                border: InputBorder.none,
-                contentPadding: EdgeInsets.zero,
+          Row(
+            children: [
+              Expanded(
+                child: Builder(builder: (ctx) {
+                  // build set of used pessoa_ids except this one
+                  final used = <int>{};
+                  for (final p in _responsiblePeople) {
+                    final id = _toInt(p['pessoa_id']);
+                    if (id != null) used.add(id);
+                  }
+                  for (final p in _collaborators) {
+                    final id = _toInt(p['pessoa_id']);
+                    if (id != null) used.add(id);
+                  }
+                  final currentId = _toInt(person['pessoa_id']);
+                  if (currentId != null) used.remove(currentId);
+
+                  final items = <DropdownMenuItem<int>>[];
+                  for (final u in _users) {
+                    final idVal = u['pessoa_id'] ?? u['id'];
+                    final id = _toInt(idVal);
+                    if (id == null) continue;
+                    if (used.contains(id)) continue; // prevent duplicates
+                    final labelText = _userLabel(u);
+                    items.add(DropdownMenuItem<int>(value: id, child: Text(labelText)));
+                  }
+
+                  return DropdownButtonFormField<int>(
+                    value: currentId,
+                    decoration: const InputDecoration(
+                      labelText: 'Nome',
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                    items: items,
+                    onChanged: (value) {
+                      setState(() {
+                        person['pessoa_id'] = value;
+                        final match = _users.firstWhere((u) => _toInt(u['pessoa_id'] ?? u['id']) == value, orElse: () => {});
+                        if (match.isNotEmpty) {
+                          final role = (match['tipo_usuario'] ?? match['tipoUsuario'] ?? match['cargo'])?.toString();
+                          person['name'] = match['nome'] ?? match['name'] ?? '';
+                          person['role_label'] = role;
+                        } else {
+                          person['name'] = '';
+                          person['role_label'] = null;
+                        }
+                      });
+                    },
+                    isExpanded: true,
+                    menuMaxHeight: 200,
+                    dropdownColor: Colors.white,
+                    icon: const Icon(Icons.arrow_drop_down),
+                    iconEnabledColor: Colors.grey[600],
+                    style: const TextStyle(
+                      color: Colors.black87,
+                      fontSize: 16,
+                    ),
+                    hint: const Text('Selecione uma pessoa'),
+                  );
+                }),
               ),
-              items: const [
-                DropdownMenuItem(value: 'pessoa1', child: Text('João Silva')),
-                DropdownMenuItem(value: 'pessoa2', child: Text('Maria Santos')),
-                DropdownMenuItem(value: 'pessoa3', child: Text('Pedro Oliveira')),
-                DropdownMenuItem(value: 'pessoa4', child: Text('Ana Costa')),
-                DropdownMenuItem(value: 'pessoa5', child: Text('Carlos Lima')),
-              ],
-              onChanged: (value) {
-                setState(() {
-                  person['name'] = value;
-                });
-              },
-              isExpanded: true,
-              menuMaxHeight: 200,
-              dropdownColor: Colors.white,
-              icon: const Icon(Icons.arrow_drop_down),
-              iconEnabledColor: Colors.grey[600],
-              style: const TextStyle(
-                color: Colors.black87,
-                fontSize: 16,
-              ),
-              hint: const Text('Selecione uma pessoa'),
-            ),
+              if (person['id'] != 'temp')
+                Builder(builder: (_) {
+                  final isFirstResponsible = _responsiblePeople.isNotEmpty && _responsiblePeople.first['id'] == person['id'];
+                  if (isFirstResponsible) return const SizedBox.shrink();
+                  return IconButton(
+                    icon: const Icon(Icons.close, color: Colors.red),
+                    onPressed: () => onRemove(person['id']),
+                  );
+                }),
+            ],
           ),
-          if (person['id'] != 'temp')
-            IconButton(
-              icon: const Icon(Icons.close, color: Colors.red),
-              onPressed: () => onRemove(person['id']),
+
+          // se for colaborador, mostrar campos de carga horária e tipo vínculo
+          if (person['papel'] == 'Colaborador' || person['papel'] == 'colaborador')
+            Padding(
+              padding: const EdgeInsets.only(top: 8.0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      initialValue: person['carga_horaria_semanal']?.toString() ?? '',
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(labelText: 'Carga Horária Semanal (h)'),
+                      onChanged: (v) => person['carga_horaria_semanal'] = v,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: DropdownButtonFormField<int>(
+                      value: _toInt(person['tipo_vinculo_hae_id']),
+                      decoration: const InputDecoration(labelText: 'Tipo Vínculo HAE'),
+                      items: _workloadTypes.map<DropdownMenuItem<int>>((w) {
+                        final idVal = w['id'] ?? w['workload_hae_id'];
+                        final id = _toInt(idVal);
+                        final label = (w['sigla'] ?? w['descricao'] ?? w['titulo'] ?? '').toString();
+                        return id != null ? DropdownMenuItem<int>(value: id, child: Text(label)) : DropdownMenuItem<int>(value: -1, child: Text(label));
+                      }).where((it) => it.value != -1).toList(),
+                      onChanged: (v) => person['tipo_vinculo_hae_id'] = v,
+                    ),
+                  ),
+                ],
+              ),
             ),
         ],
       ),
@@ -1036,23 +1370,24 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
             hintText: 'Descreva a etapa do projeto',
           ),
           const SizedBox(height: 12),
-          DropdownButtonFormField<String>(
-            value: step['deliverable']?.isNotEmpty == true ? step['deliverable'] : null,
+          DropdownButtonFormField<int>(
+            value: step['deliverable_id'] as int?,
             decoration: const InputDecoration(
               labelText: 'Entregável (link/SEI)',
               border: OutlineInputBorder(),
               contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 16),
             ),
-            items: const [
-              DropdownMenuItem(value: 'entregavel1', child: Text('Relatório Técnico')),
-              DropdownMenuItem(value: 'entregavel2', child: Text('Apresentação PowerPoint')),
-              DropdownMenuItem(value: 'entregavel3', child: Text('Documento SEI')),
-              DropdownMenuItem(value: 'entregavel4', child: Text('Planilha de Dados')),
-              DropdownMenuItem(value: 'entregavel5', child: Text('Manual de Procedimentos')),
-            ],
+            items: _deliverables.map((d) {
+              final did = _toInt(d['id']);
+              return did != null
+                  ? DropdownMenuItem<int>(value: did, child: Text(d['titulo'] ?? d['nome'] ?? d['descricao'] ?? 'Entregável'))
+                  : null;
+            }).where((it) => it != null).cast<DropdownMenuItem<int>>().toList(),
             onChanged: (value) {
               setState(() {
-                step['deliverable'] = value;
+                step['deliverable_id'] = value;
+                final match = _deliverables.firstWhere((d) => _toInt(d['id']) == value, orElse: () => {});
+                step['deliverable'] = match.isNotEmpty ? (match['titulo'] ?? match['nome'] ?? '') : '';
               });
             },
             isExpanded: true,

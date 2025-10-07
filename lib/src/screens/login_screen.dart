@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import '../services/auth_storage.dart';
+// ...existing imports...
+import 'package:provider/provider.dart';
+import '../services/auth_provider.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../theme/app_theme.dart';
@@ -46,12 +48,20 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (res.statusCode == 201 || res.statusCode == 200) {
         final body = res.body.isNotEmpty ? jsonDecode(res.body) : null;
-        final token = body != null && body['access_token'] != null
-            ? body['access_token']
-            : body?['token'] ?? null;
-        print('Token recebido: $token');
+        final token = body != null && body['access_token'] != null ? body['access_token'] : body?['token'];
+        final refresh = body != null && body['refresh_token'] != null ? body['refresh_token'] : null;
         if (token != null) {
-          await AuthStorage.saveToken(token as String);
+          // use AuthProvider to persist tokens and fetch user
+          final auth = Provider.of<AuthProvider>(context, listen: false);
+          await auth.setToken(token as String, refresh: refresh as String?);
+          try {
+            final meRes = await http.get(Uri.parse('http://192.168.0.248:3000/auth/me'), headers: {'Authorization': 'Bearer $token'});
+            if (meRes.statusCode == 200) {
+              final userObj = jsonDecode(meRes.body) as Map<String, dynamic>;
+              await auth.setToken(token, refresh: refresh, userData: userObj);
+            }
+          } catch (_) {}
+
           if (mounted) {
             setState(() => _isLoading = false);
             context.go('/dashboard');
@@ -60,7 +70,7 @@ class _LoginScreenState extends State<LoginScreen> {
         }
       }
       if (mounted) {
-        final startOffline = await _showOfflinePrompt();
+        final startOffline = await _showOfflinePrompt('Nome de usuário ou senha inválidos');
         if (startOffline) {
           if (mounted) setState(() => _isLoading = false);
           if (mounted) context.go('/dashboard');
@@ -72,7 +82,8 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     } catch (e) {
       if (mounted) {
-        final startOffline = await _showOfflinePrompt();
+        final startOffline = await _showOfflinePrompt(
+            'Não foi possível conectar ao servidor');
         if (startOffline) {
           if (mounted) setState(() => _isLoading = false);
           if (mounted) context.go('/dashboard');
@@ -85,14 +96,14 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  Future<bool> _showOfflinePrompt() async {
+  Future<bool> _showOfflinePrompt(String reason) async {
     return await showDialog<bool>(
           context: context,
           barrierDismissible: false,
           builder: (ctx) => AlertDialog(
             title: const Text('Iniciar modo offline?'),
-            content: const Text(
-                'Não foi possível contactar o servidor. Deseja iniciar no modo offline?'),
+            content: Text(
+                '$reason. Deseja iniciar no modo offline?'),
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(ctx).pop(false),

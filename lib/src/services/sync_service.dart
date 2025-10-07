@@ -27,11 +27,35 @@ class SyncService {
 
         late http.Response res;
         final url = '$baseUrl${endpoint.startsWith('/') ? '' : '/'}$endpoint';
+        // If body contains an acao_projeto_local_ref, try to resolve it to a server id
+        String? bodyToSend = body;
+        if (bodyToSend != null) {
+          try {
+            final parsed = json.decode(bodyToSend);
+            if (parsed is Map && parsed.containsKey('acao_projeto_local_ref')) {
+              final localParent = parsed['acao_projeto_local_ref']?.toString();
+              if (localParent != null && localParent.isNotEmpty) {
+                final serverId = await _db.getServerId(localParent);
+                if (serverId == null) {
+                  // Parent project not synced yet; skip this item for now
+                  continue;
+                }
+                // set proper acao_projeto_id and remove local ref
+                parsed['acao_projeto_id'] = serverId;
+                parsed.remove('acao_projeto_local_ref');
+                bodyToSend = json.encode(parsed);
+              }
+            }
+          } catch (e) {
+            // if parsing fails, just keep original body
+            bodyToSend = body;
+          }
+        }
 
         if (method.toUpperCase() == 'POST') {
-          res = await http.post(Uri.parse(url), headers: headers, body: body);
+          res = await http.post(Uri.parse(url), headers: headers, body: bodyToSend);
         } else if (method.toUpperCase() == 'PUT') {
-          res = await http.put(Uri.parse(url), headers: headers, body: body);
+          res = await http.put(Uri.parse(url), headers: headers, body: bodyToSend);
         } else if (method.toUpperCase() == 'DELETE') {
           res = await http.delete(Uri.parse(url), headers: headers);
         } else {
@@ -45,12 +69,12 @@ class SyncService {
           // if POST created a resource and we have local_ref, map ids
           try {
             final respJson = res.body.isNotEmpty ? json.decode(res.body) : null;
+            int? parsedId;
             if (localRef != null && respJson != null) {
               // tentar extrair id: considerar 'id', 'project_id', 'pessoa_id' ou Prisma PK 'acao_projeto_id'
               final serverId = respJson['id'] ?? respJson['project_id'] ?? respJson['pessoa_id'] ?? respJson['acao_projeto_id'];
               if (serverId != null) {
                 // serverId pode vir como int ou string - tentar converter
-                int? parsedId;
                 if (serverId is int) parsedId = serverId;
                 else if (serverId is String) parsedId = int.tryParse(serverId);
 
@@ -58,6 +82,16 @@ class SyncService {
                   await _db.updateProjectServerId(localRef, parsedId);
                 }
               }
+            }
+
+            // if the endpoint is project creation, remove any draft associated to this localRef
+            // ONLY remove when server confirmed creation (201) or when we parsed a server id
+            try {
+              if (endpoint.endsWith('/project1') && localRef != null && (res.statusCode == 201 || parsedId != null)) {
+                await _db.deleteDraftByLocalId(localRef);
+              }
+            } catch (e) {
+              // ignore draft deletion errors
             }
           } catch (e) {
             // ignore parsing errors

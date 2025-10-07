@@ -131,6 +131,11 @@ class LocalDB {
     return await database.delete('drafts', where: 'id = ?', whereArgs: [id]);
   }
 
+  Future<int> deleteDraftByLocalId(String localId) async {
+    final database = await db;
+    return await database.delete('drafts', where: 'local_id = ?', whereArgs: [localId]);
+  }
+
   // Sync queue
   Future<int> enqueueSync(String action, String endpoint, String method, String? body, {String? localRef}) async {
     final database = await db;
