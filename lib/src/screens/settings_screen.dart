@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
+import '../services/auth_provider.dart';
 import '../theme/app_theme.dart';
 import '../widgets/bottom_navigation.dart';
 
@@ -302,25 +304,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _showLogoutDialog() {
-    showDialog(
+    showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
         title: const Text('Sair'),
         content: const Text('Tem certeza que deseja sair da aplicação?'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(),
+            onPressed: () => Navigator.of(ctx).pop(false),
             child: const Text('Cancelar'),
           ),
           ElevatedButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              context.go('/');
-            },
+            onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text('Sair'),
           ),
         ],
       ),
-    );
+    ).then((confirmed) async {
+      if (confirmed == true) {
+        try {
+          final auth = Provider.of<AuthProvider>(context, listen: false);
+          await auth.logout();
+        } catch (_) {}
+        if (mounted) context.go('/');
+      }
+    });
   }
 }

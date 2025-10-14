@@ -10,31 +10,34 @@ class AuthProvider extends ChangeNotifier {
   String? _token;
   String? _refreshToken;
   Map<String, dynamic>? _user;
+  bool _isLoading = false;
 
   String? get token => _token;
   Map<String, dynamic>? get user => _user;
   bool get isAuthenticated => _token != null;
+  bool get isLoading => _isLoading;
 
   Future<void> loadFromStorage() async {
+    _isLoading = true;
+    notifyListeners();
     _token = await AuthStorage.readToken();
     _refreshToken = await AuthStorage.readRefreshToken();
     if (_token != null) {
-      // try to validate with backend
       try {
         final res = await http.get(Uri.parse('\$baseUrl/auth/me'), headers: {'Authorization': 'Bearer \\$_token'});
         if (res.statusCode == 200) {
           _user = jsonDecode(res.body) as Map<String, dynamic>;
         } else {
-          // invalid token - try refresh
           final refreshed = await tryRefresh();
           if (!refreshed) {
             await logout();
           }
         }
       } catch (_) {
-        // offline: keep token in memory and allow offline mode
       }
     }
+    notifyListeners();
+    _isLoading = false;
     notifyListeners();
   }
 
